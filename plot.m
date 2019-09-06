@@ -1,8 +1,10 @@
 M=dlmread("output.txt"," ");
-surf(M','edgecolor','none')
+h=imagesc(flipud(M'));
 axis equal
-axis off
-colorbar
-view(0,90)
+axis on
+
+colorbar("South")
 colormap(jet)
+%set(h,'Position',[60 300 1200 500])
 pause
+
