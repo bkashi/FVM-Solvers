@@ -19,22 +19,22 @@ using namespace Eigen;
 // 			case parameters
 // =======================================================
 // domain
-#define	Lx 0.5
-#define	Ly 0.5
-#define	Lz 0.01
+#define	Lx	1.0
+#define	Ly	0.5
+#define	Lz	0.01
 
 // grid
-#define	xCells 20
-#define	yCells 20
-#define	zCells 1
+#define	xCells	60
+#define	yCells	30
+#define	zCells	1
 
 // material properties
-#define	K 1.5e+1
-#define rho 1000.0
+#define	K	1.5e+1
+#define rho	1000.0
 
 // velocity field
-#define	Ux 1.0
-#define	Uy 0.0
+#define	Ux	1.0
+#define	Uy	0.0
 
 // numerical methods
 #define linearSolver	BiCGSTAB
@@ -42,14 +42,14 @@ using namespace Eigen;
 #define tolerance	1e-6
 
 // boundary conditions	
-#define westBCtype "Dirichlet"
-#define westBCvalue 0.0
-#define eastBCtype "Neumann"
-#define eastBCvalue 0.0
-#define southBCtype "Dirichlet"
-#define southBCvalue 100.0
-#define northBCtype "Dirichlet"
-#define northBCvalue 100.0
+#define westBCtype	"Dirichlet"
+#define westBCvalue	20.0
+#define eastBCtype	"Neumann"
+#define eastBCvalue	0.0
+#define southBCtype	"Neumann"
+#define southBCvalue	1000.0
+#define northBCtype	"Neumann"
+#define northBCvalue	0.0
 
 
 // =======================================================
@@ -177,9 +177,13 @@ int main()
 	for (int k=0; k<xCells; k++)
 		for (int j=0; j<yCells; j++)
 		{
+			// uniform west to east			
 			//u[k][j] = Ux;
+
+			// parabolic west to east
 			u[k][j] = Ux * (1 - pow( double(yCells+1)/2.0 - double(j+1), 2 )
 					 / pow( double(yCells+1)/2.0, 2 ) );
+
 			v[k][j] = Uy;
 		};
 	cout << endl;
