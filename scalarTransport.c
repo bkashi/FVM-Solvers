@@ -1,6 +1,6 @@
 /*========================================================*\
 |							   |
-|		scalar transport solver			   |
+|		   Laplacian solver			   |
 |		 finite volume method			   |
 |							   |
 \*========================================================*/
@@ -27,15 +27,14 @@ using namespace Eigen;
 #define	xCells 60
 #define	yCells 40
 #define	zCells 1
-int	cells=xCells*yCells;
-double	dx=Lx/xCells, dy=Ly/yCells, dz=Lz/zCells;
 
 // material properties
 #define	K 1.5e+1
 #define rho 1000.0
 
 // velocity field
-#define	U 0.2
+#define	Ux 1.0
+#define	Uy 0.0
 
 // numerical methods
 #define linearSolver	BiCGSTAB
@@ -45,17 +44,19 @@ double	dx=Lx/xCells, dy=Ly/yCells, dz=Lz/zCells;
 // boundary conditions	
 #define westBCtype "Dirichlet"
 #define westBCvalue 0.0
-#define eastBCtype "Dirichlet"
+#define eastBCtype "Neumann"
 #define eastBCvalue 0.0
-#define southBCtype "Neumann"
-#define southBCvalue 0.0
+#define southBCtype "Dirichlet"
+#define southBCvalue 100.0
 #define northBCtype "Dirichlet"
-#define northBCvalue 500.0
+#define northBCvalue 100.0
 
 
 // =======================================================
 // 		     global variables
 // =======================================================
+int	cells=xCells*yCells;
+double	dx=Lx/xCells, dy=Ly/yCells, dz=Lz/zCells;
 SparseMatrix<double> 	M(cells,cells);
 VectorXd 		B(cells), X(cells);
 double	Ap, Fw, Fe, Fs, Fn, Dw, De, Ds, Dn, Aw, Ae, As, An, Sp, Su;
@@ -66,64 +67,87 @@ int i=0;
 // =======================================================
 // 			classes
 // =======================================================
-/*
+
 class BoundaryCondition
 {
+	private:
 		string	location;
 		string	type;
 		double	value;
 
+		void Dirichlet()
+		{
+			if (location=="west")
+			{
+				Aw  =	0;
+				Sp +=	-2*Dw - Fw;
+				Su +=	(2*Dw + Fw) * westBCvalue;
+			}
+
+			if (location=="east")
+			{
+				Ae  =	0;
+				Sp +=	-2*De + Fe;
+				Su +=	(2*De - Fe) * eastBCvalue;
+			}
+
+			if (location=="south")
+			{
+				As  =	0;
+				Sp +=	-2*Ds - Fs;
+				Su +=	(2*Ds + Fs) * southBCvalue;
+			}
+
+			if (location=="north")
+			{
+				An  =	0;
+				Sp +=	-2*Dn + Fn;
+				Su +=	(2*Dn - Fn) * northBCvalue;
+			}
+		};
+
+		void Neumann()
+		{
+			if (location=="west")
+			{
+				Aw  =	0;
+				Su +=	dy * dz * westBCvalue;
+			}
+
+			if (location=="east")
+			{
+				Ae  =	0;
+				Su +=	dy * dz * eastBCvalue;
+			}
+
+			if (location=="south")
+			{
+				As  =	0;
+				Su +=	dx * dz * southBCvalue;
+			}
+
+			if (location=="north")
+			{
+				An  =	0;
+				Su +=	dx * dz * northBCvalue;
+			}
+		};
+
 	public:
 		void setup(string aLocation, string aType, double aValue)
 		{
-			type = aType;
-			value = aValue;
-			location = aLocation;
+			type =		aType;
+			value =		aValue;
+			location =	aLocation;
 		};
 
 		void apply()
 		{
-			double Cp=0, Cb=0;
-
-			if (location=="west")
-			{
-				Cp = -Aw + Dw;
-				Cb = -Aw - Dw;
-			};
-
-			if (location=="east")
-			{
-				Cp = +Aw + Dw;
-				Cb = +Aw - Dw;
-			};
-
-			if (location=="south")
-			{
-				Cp = -Aw + Dw;
-				Cb = -Aw - Dw;
-			};
-
-			if (location=="north")
-			{
-				Cp = +Aw + Dw;
-				Cb = +Aw - Dw;
-			};
-
-
-			if (type=="Neumann")
-			{
-				B(i) += value * dy * dz;
-				P = P + Cp;
-			};
-
-			if (type=="Dirichlet")
-			{
-				B(i) += 2.0 * Cp * value;
-				//P = P - Cp;
-			};
+			if (type=="Dirichlet")	Dirichlet();
+			if (type=="Neumann")	Neumann();
 		};
 };
-*/
+
 
 
 // =======================================================
@@ -131,14 +155,13 @@ class BoundaryCondition
 // =======================================================
 int main()
 {
-/*
 	// setup boundary conditions	
 	BoundaryCondition westBC, eastBC, southBC, northBC;
 	westBC.setup("west", westBCtype, westBCvalue);
 	eastBC.setup("east", eastBCtype, eastBCvalue);
 	southBC.setup("south", southBCtype, southBCvalue);
 	northBC.setup("north", northBCtype, northBCvalue);
-*/
+
 	// setup velocity field
 	// ...
 
@@ -155,10 +178,10 @@ int main()
 	cout << "Building matrix..." << flush;
 
 
-	Fw = rho * U * dy * dz;
-	Fe = rho * U * dy * dz;
-	Fs = rho * U * dx * dz;
-	Fn = rho * U * dx * dz;
+	Fw = rho * Ux * dy * dz;
+	Fe = rho * Ux * dy * dz;
+	Fs = rho * Uy * dx * dz;
+	Fn = rho * Uy * dx * dz;
 
 	Dw = K / dx * dy * dz;
 	De = K / dx * dy * dz;
@@ -171,47 +194,27 @@ int main()
 	{
 		Aw = Dw + Fw/2;
 		Ae = De - Fe/2;
-		As = Ds + Fw/2;
-		An = Dn - Fw/2;
+		As = Ds + Fs/2;
+		An = Dn - Fn/2;
 
 		Sp = 0;
 		Su = 0;
 
 		// west domain boundary?
-		if (i<yCells)
-		{
-			Aw = 0;
-			Sp += -2*Dw - Fw;
-			Su += (2*Dw + Fw) * westBCvalue;
-		}
-		else M.insert(i,i-yCells) = -Aw;    
+		if (i<yCells)			westBC.apply();
+		else				M.insert(i,i-yCells) = -Aw;    
 	    
 		// east domain boundary?
-		if (i>=(xCells-1)*yCells)
-		{
-			Ae = 0;
-			Sp += -2*De + Fe;
-			Su += (2*De - Fe) * eastBCvalue;
-		}
-		else M.insert(i,i+yCells) = -Ae;
+		if (i>=(xCells-1)*yCells)	eastBC.apply();
+		else				M.insert(i,i+yCells) = -Ae;
     
 		// south domain boundary?
-		if ((i+1) % yCells == 1)
-		{
-			As = 0;
-			Sp += -2*Ds - Fs;
-			Su += (2*Ds + Fs) * southBCvalue;
-		}
-		else M.insert(i,i-1) = -As;
+		if ((i+1) % yCells == 1)	southBC.apply();
+		else				M.insert(i,i-1) = -As;
 	    
 		// north domain boundary?
-		if ((i+1) % yCells == 0)
-		{
-			An = 0;
-			Sp += -2*Dn + Fn;
-			Su += (2*Dn - Fn) * northBCvalue;
-		}
-		else M.insert(i,i+1) = -An;
+		if ((i+1) % yCells == 0)	northBC.apply();
+		else				M.insert(i,i+1) = -An;
 
 		// current cell
 		Ap = Aw + Ae + As + An + Fe - Fw + Fn - Fs - Sp;
