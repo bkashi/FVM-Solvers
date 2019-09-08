@@ -1,3 +1,0 @@
-set pm3d map
-splot 'output.txt' matrix
-pause -1
