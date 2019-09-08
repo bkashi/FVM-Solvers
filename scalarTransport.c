@@ -19,37 +19,39 @@ using namespace Eigen;
 // 			case parameters
 // =======================================================
 // domain
-#define	Lx	1.0
-#define	Ly	0.5
-#define	Lz	0.01
+#define	Lx		1.5
+#define	Ly		0.5
+#define	Lz		0.01
 
 // grid
-#define	xCells	60
-#define	yCells	30
-#define	zCells	1
+#define	xCells		90
+#define	yCells		30
+#define	zCells		1
 
 // material properties
-#define	K	1.5e+1
-#define rho	1000.0
+#define	K		1.5e+1
+#define rho		1000.0
 
 // velocity field
-#define	Ux	1.0
-#define	Uy	0.0
+#define	Ux		1.0
+#define	UxProfile	"parabolic"
+#define	Uy		0.0
+#define	UyProfile	"uniform"
 
-// numerical methods
-#define linearSolver	BiCGSTAB
-#define maxIter		1000
-#define tolerance	1e-6
-
-// boundary conditions	
+// boundary conditions for scalar
 #define westBCtype	"Dirichlet"
 #define westBCvalue	20.0
 #define eastBCtype	"Neumann"
 #define eastBCvalue	0.0
 #define southBCtype	"Neumann"
-#define southBCvalue	1000.0
+#define southBCvalue	350.0
 #define northBCtype	"Neumann"
-#define northBCvalue	0.0
+#define northBCvalue	200.0
+
+// numerical methods
+#define linearSolver	BiCGSTAB
+#define maxIter		1000
+#define tolerance	1e-6
 
 
 // =======================================================
@@ -156,7 +158,9 @@ class BoundaryCondition
 // =======================================================
 int main()
 {
-	// setup boundary conditions	
+	// -------------------------------------------
+	//	     setup boundary conditions
+	// -------------------------------------------
 	BoundaryCondition westBC, eastBC, southBC, northBC;
 	westBC.setup("west", westBCtype, westBCvalue);
 	eastBC.setup("east", eastBCtype, eastBCvalue);
@@ -164,7 +168,9 @@ int main()
 	northBC.setup("north", northBCtype, northBCvalue);
 
 
-	// print info
+	// -------------------------------------------
+	//	          print info
+	// -------------------------------------------
 	cout << endl << "Domain: " << Lx << " X " << Ly << " X " << Lz << " m^3." << endl;
 	cout << "Grid: "  << xCells << " X " << yCells << " X " << zCells << " = " <<
 		 cells << " cells." << endl;
@@ -177,14 +183,13 @@ int main()
 	for (int k=0; k<xCells; k++)
 		for (int j=0; j<yCells; j++)
 		{
-			// uniform west to east			
-			//u[k][j] = Ux;
+			if (UxProfile=="uniform")	u[k][j] = Ux;
+			else	u[k][j] = Ux * (1 - pow( double(yCells+1)/2.0 - double(j+1), 2 )
+					/ pow( double(yCells+1)/2.0, 2 ) );
 
-			// parabolic west to east
-			u[k][j] = Ux * (1 - pow( double(yCells+1)/2.0 - double(j+1), 2 )
-					 / pow( double(yCells+1)/2.0, 2 ) );
-
-			v[k][j] = Uy;
+			if (UyProfile=="uniform")	v[k][j] = Uy;
+			else	v[k][j] = Uy  * (1 - pow( double(xCells+1)/2.0 - double(k+1), 2 )
+					/ pow( double(xCells+1)/2.0, 2 ) );
 		};
 	cout << endl;
 
@@ -195,16 +200,27 @@ int main()
 	cout << "Building matrix..." << flush;
 
 	// loop all cells
-	while (i<cells)
+	for (i=0; i<cells; i++)
 	{
 		// coord's for current cell
 		j = i % yCells;
 		k = i / yCells;
 
-		Fw = rho * u[k][j] * dy * dz;
-		Fe = rho * u[k][j] * dy * dz;
-		Fs = rho * v[k][j] * dx * dz;
-		Fn = rho * v[k][j] * dx * dz;
+		// west domain boundary?
+		if (i<yCells)			Fw = rho * u[k][j] * dy * dz;
+		else				Fw = rho * ( u[k-1][j] + u[k][j] ) / 2.0 * dy * dz;
+	    
+		// east domain boundary?
+		if (i>=(xCells-1)*yCells)	Fe = rho * u[k][j] * dy * dz;
+		else				Fe = rho * ( u[k][j] + u[k+1][j] ) / 2.0 * dy * dz;
+    
+		// south domain boundary?
+		if ((i+1) % yCells == 1)	Fs = rho * v[k][j] * dx * dz;
+		else				Fs = rho * ( v[k][j-1] + v[k][j] ) / 2.0 * dx * dz;
+	    
+		// north domain boundary?
+		if ((i+1) % yCells == 0)	Fn = rho * v[k][j] * dx * dz;
+		else				Fn = rho * ( v[k][j] + v[k][j+1] ) / 2.0 * dx * dz;
 
 		Dw = K / dx * dy * dz;
 		De = K / dx * dy * dz;
@@ -240,14 +256,8 @@ int main()
 		M.insert(i,i) = Ap;
 
 		B(i) = Su;
-
-		// next cell
-		i++;
 	};	
-
 	cout << "done." << endl;
-	//cout << M << endl;
-	//cout << B << endl;
 	
 
 	// -------------------------------------------
@@ -260,7 +270,6 @@ int main()
 	solver.compute(M);
 	X = solver.solve(B);
 	cout << "done " << " (" << solver.error() << ", " << solver.iterations() << ")." << endl;
-	//cout << X << endl;
 
 
 	// -------------------------------------------
@@ -269,7 +278,7 @@ int main()
 	cout << "Writing to files..." << flush;
 	ofstream outFile;
 
-	// Ux field
+	// ------------  Ux field  -------------------
 	outFile.open("Ux");
 
 	for (int j=yCells-1; j>=0; j--)
@@ -284,7 +293,7 @@ int main()
 	outFile << endl;
 	outFile.close();
 
-	// Uy field
+	// ------------  Uy field  -------------------
 	outFile.open("Uy");
 
 	for (int j=0; j<yCells; j++)
@@ -300,7 +309,7 @@ int main()
 	outFile.close();
 
 
-	// T field
+	// -------------  T field  -------------------
 	outFile.open("T");
 
 	for (int i=0; i<cells; i++)
