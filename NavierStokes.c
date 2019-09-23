@@ -38,7 +38,7 @@ using namespace Eigen;
 
 // boundary conditions for x-velocity
 #define westBCtype	"Dirichlet"
-#define westBCvalue	1e-4
+#define westBCvalue	1.0
 #define eastBCtype	"Neumann"
 #define eastBCvalue	0.0
 #define southBCtype	"Dirichlet"
@@ -59,95 +59,9 @@ int	cells=xCells*yCells;
 double	dx=Lx/xCells, dy=Ly/yCells, dz=Lz/zCells;
 SparseMatrix<double> 	M(cells,cells);
 VectorXd 		B(cells), X(cells);
-double	Ap, Fw, Fe, Fs, Fn, Dw, De, Ds, Dn, Aw, Ae, As, An, Sp, Su;
+double	Ap, Fw, Fe, Fs, Fn, Dw, De, Ds, Dn, Su;
 int i=0, j, k;
 double u[yCells][xCells], v[yCells][xCells], p[yCells][xCells];
-
-
-
-// =======================================================
-// 			classes
-// =======================================================
-
-class BoundaryCondition
-{
-	private:
-		string	location;
-		string	type;
-		double	value;
-
-		void Dirichlet()
-		{
-			if (location=="west")
-			{
-				Aw  =	0;
-				Sp +=	-2*Dw - Fw;
-				Su +=	(2*Dw + Fw) * westBCvalue;
-			}
-
-			if (location=="east")
-			{
-				Ae  =	0;
-				Sp +=	-2*De + Fe;
-				Su +=	(2*De - Fe) * eastBCvalue;
-			}
-
-			if (location=="south")
-			{
-				As  =	0;
-				Sp +=	-2*Ds - Fs;
-				Su +=	(2*Ds + Fs) * southBCvalue;
-			}
-
-			if (location=="north")
-			{
-				An  =	0;
-				Sp +=	-2*Dn + Fn;
-				Su +=	(2*Dn - Fn) * northBCvalue;
-			}
-		};
-
-		void Neumann()
-		{
-			if (location=="west")
-			{
-				Aw  =	0;
-				Su +=	dy * dz * westBCvalue;
-			}
-
-			if (location=="east")
-			{
-				Ae  =	0;
-				Su +=	dy * dz * eastBCvalue;
-			}
-
-			if (location=="south")
-			{
-				As  =	0;
-				Su +=	dx * dz * southBCvalue;
-			}
-
-			if (location=="north")
-			{
-				An  =	0;
-				Su +=	dx * dz * northBCvalue;
-			}
-		};
-
-	public:
-		void setup(string aLocation, string aType, double aValue)
-		{
-			type =		aType;
-			value =		aValue;
-			location =	aLocation;
-		};
-
-		void apply()
-		{
-			if (type=="Dirichlet")	Dirichlet();
-			if (type=="Neumann")	Neumann();
-		};
-};
 
 
 
@@ -166,17 +80,6 @@ int main()
 			v[i][j] = Uy;
 			p[i][j] = double(xCells-j) / double(xCells);
 		};
-
-
-	// -------------------------------------------
-	//	     setup boundary conditions
-	// -------------------------------------------
-	BoundaryCondition westBC, eastBC, southBC, northBC;
-	westBC.setup("west", westBCtype, westBCvalue);
-	eastBC.setup("east", eastBCtype, eastBCvalue);
-	southBC.setup("south", southBCtype, southBCvalue);
-	northBC.setup("north", northBCtype, northBCvalue);
-
 
 	// -------------------------------------------
 	//	        print mesh info
@@ -199,53 +102,80 @@ int main()
 		j = i / xCells; // y
 		k = i % xCells; // x
 
-		// west domain boundary?
-		if (k==0)			Fw = u[j][k] * dy * dz;
-		else				Fw = ( u[j][k-1] + u[j][k] ) / 4.0 * dy * dz;
-	    
-		// east domain boundary?
-		if (k==xCells-1)		Fe = u[j][k] * dy * dz;
-		else				Fe = ( u[j][k] + u[j][k+1] ) / 4.0 * dy * dz;
-    
-		// south domain boundary?
-		if (j==yCells-1)		Fs = v[j][k] * dx * dz;
-		else				Fs = ( v[j+1][k] + v[j][k] ) / 4.0 * dx * dz;
-	    
-		// north domain boundary?
-		if (j==0)			Fn = v[j][k] * dx * dz;
-		else				Fn = ( v[j][k] + v[j-1][k] ) / 4.0 * dx * dz;
-
+		// diffusion
 		Dw = nu / dx * dy * dz;
 		De = nu / dx * dy * dz;
 		Ds = nu / dy * dx * dz;
 		Dn = nu / dy * dx * dz;
 
-		Aw = -Dw -Fw;
-		Ae = -De +Fe;
-		As = -Ds -Fs;
-		An = -Dn +Fn;
+		// face fluxes
+		if (k==0)		Fw = u[j][k] * dy * dz;
+		else			Fw = ( u[j][k-1] + u[j][k] ) / 2.0 * dy * dz;
+		if (k==xCells-1)	Fe = u[j][k] * dy * dz;	
+		else			Fe = ( u[j][k] + u[j][k+1] ) / 2.0 * dy * dz;
+		if (j==yCells-1)	Fs = v[j][k] * dx * dz;
+		else			Fs = ( v[j+1][k] + v[j][k] ) / 2.0 * dx * dz;
+		if (j==0)		Fn = v[j][k] * dx * dz;
+		else			Fn = ( v[j][k] + v[j-1][k] ) / 2.0 * dx * dz;
 
-		Sp = 0;
-		Su = -1.0 * ( p[j][k+1] - p[j][k-1] ) / rho;
+		// reset source term
+		Su = -1.0 / rho * 100.0;//( p[j][k+1] - p[j][k-1] );
 
-		// west domain boundary?
-		if (k==0)			westBC.apply();
-		else				M.insert(i,i-1) = Aw;    
+		// reset contribution to current cell
+		Ap = 0;
+
+		// west boundary?
+		if (k==0)
+		{
+			// Dirichet
+			Su += +Fw * westBCvalue  +2.0*Dw * westBCvalue;
+			Ap += +2.0*Dw;
+		}
+		else
+		{
+			Ap += -Fw/2.0 + Dw;
+			M.insert(i,i-1) = -Fw/2.0 -Dw;
+		}
 	    
-		// east domain boundary?
-		if (k==xCells-1)		eastBC.apply();
-		else				M.insert(i,i+1) = Ae;
+		// east boundary?
+		if (k==xCells-1)
+		{
+			// Neumann
+			Su += eastBCvalue;
+		}
+		else
+		{
+			Ap += +Fe/2.0 + De;
+			M.insert(i,i+1) = +Fe/2.0 -De;
+		}
     
-		// south domain boundary?
-		if (j==yCells-1)		southBC.apply();
-		else				M.insert(i,i+xCells) = As;
+		// south boundary?
+		if (j==yCells-1)
+		{
+			// Dirichet
+			Su += +Fs * southBCvalue +2.0*Ds * southBCvalue;
+			Ap += -2.0*Ds;
+		}
+		else
+		{
+			Ap += -Fs/2.0 + Ds;
+			M.insert(i,i+yCells) = -Fw/2.0 -Ds;
+		}
 	    
-		// north domain boundary?
-		if (j==0)			northBC.apply();
-		else				M.insert(i,i-xCells) = An;
-
+		// north boundary?
+		if (j==0)
+		{
+			// Dirichet
+			Su += -Fn * northBCvalue +2.0*Dn * northBCvalue;
+			Ap += +2.0*Dn;
+		}
+		else
+		{
+			Ap += +Fn/2.0 + Dn;
+			M.insert(i,i-yCells) = +Fn/2.0 -Dn;
+		}
+		
 		// current cell
-		Ap = Aw + Ae + As + An - Sp;
 		M.insert(i,i) = Ap;
 
 		B(i) = Su;
